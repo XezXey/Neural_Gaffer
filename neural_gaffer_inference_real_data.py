@@ -196,7 +196,6 @@ def main(args):
     )
  
     
-
     lighting_per_view = args.lighting_per_view
     total_view = args.total_view
     img_per_object = lighting_per_view * total_view

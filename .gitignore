@@ -9,3 +9,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 wandb/
+preprocessed_lighting_data/
+.gitignore
+real_data_relighting/
