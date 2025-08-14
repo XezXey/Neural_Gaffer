@@ -1,0 +1,29 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Neural Gaffer - Process lighting",
+            "type": "debugpy",
+            "request": "launch",
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "0",
+                "WANDB_MODE": "offline"
+            },
+            "program": "scripts/generate_bg_and_rotate_envir_map.py",
+            "args": [
+                "--lighting_dir",
+                "demo/environment_map_sample",
+                "--output_dir",
+                "./preprocessed_lighting_data",
+                "--frame_num",
+                "120"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "/home/mint/Dev/DiFaReli++/TPAMI_baseline_MajorRevision/Neural_Gaffer/",
+            "justMyCode": true
+        }
+    ]
+}

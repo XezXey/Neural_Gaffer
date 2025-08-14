@@ -306,7 +306,7 @@ if __name__ == '__main__':
     for light_idx in range(to_process_light_num):
         envir_map_path = selected_envir_map_paths[light_idx]
         envir_map_name = os.path.basename(envir_map_path)[:-4]
-        hdr_rgb = read_hdr(envir_map_path)
+        hdr_rgb = read_hdr(envir_map_path)  # Read raw value in RGB order [0, some_large_value]
         envir_map_hdr_values[envir_map_name] = hdr_rgb
 
         init_RT = np.load(args.init_RT_path)
