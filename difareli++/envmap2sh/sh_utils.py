@@ -374,11 +374,17 @@ def from_x_left_to_z_up(point):
     return new_point
 
 def genSurfaceNormals(n):
-  x = torch.linspace(-1, 1, n)
-  y = torch.linspace(1, -1, n)
-  y, x = torch.meshgrid(y, x)
+    """
+    convention is 
+    x is left->right [-1, 1]
+    y is up->down [1, -1] 
+    z is back->front [0, 1]
+    """
+    x = torch.linspace(-1, 1, n)
+    y = torch.linspace(1, -1, n)
+    y, x = torch.meshgrid(y, x)
 
-  z = (1 - x ** 2 - y ** 2)
-  z[z < 0] = 0
-  z = torch.sqrt(z)
-  return torch.stack([x, y, z], 0)
+    z = (1 - x ** 2 - y ** 2)
+    z[z < 0] = 0
+    z = torch.sqrt(z)
+    return torch.stack([x, y, z], 0)
