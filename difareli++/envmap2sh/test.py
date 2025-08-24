@@ -5,12 +5,14 @@ import matplotlib.pyplot as plt
 import skimage
 import torchvision
 import tqdm
+from envmap import EnvironmentMap, rotation_matrix
 import warnings
 import torch as th
 warnings.filterwarnings("ignore", category=UserWarning)
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--spl', default='middle', help='Use a single point')
+parser.add_argument('--axis', default='azimuth', help='Rotation axis')
 args = parser.parse_args()
 
 tonemapper = TonemapHDR()
@@ -47,8 +49,15 @@ def render(hdr_image):
     
     return ((normal_map + 1) * 0.5) * mask, shading * mask
 
-def generate_frame(hdr_image, i):
-    hdr_image_roll = np.roll(hdr_image.copy(), shift=-i, axis=1)
+def generate_frame(hdr_image, i, axis='azimuth'):
+    # hdr_image_roll = np.roll(hdr_image.copy(), shift=-i, axis=1)
+    rot_deg = i*np.pi/180
+    dcm = rotation_matrix(azimuth=rot_deg if axis == 'azimuth' else 0,
+                        elevation=rot_deg if axis == 'elevation' else 0,
+                        roll=rot_deg if axis == 'roll' else 0)
+    e = EnvironmentMap(hdr_image, 'latlong')
+    e_rot = e.copy().rotate(dcm)
+    hdr_image_roll = e_rot.data    # np.array of shape [H, W, 3], min: 0, max: 1
     normal_map, shading = render(hdr_image_roll)
     tgt_w = normal_map.shape[1] + shading.shape[1]
     
@@ -101,14 +110,13 @@ if __name__ == '__main__':
     else:
         print("[#] Using full HDR environment map.")
         pf = 'hdr'
-    
 
     import multiprocessing as mp
     with mp.Pool(processes=mp.cpu_count()) as pool:
         # 'pool.imap' applies the 'generate_frame' function to each item in 'shift_values'.
         # It's used here instead of 'pool.map' because it works better with tqdm's progress bar.
         # The list() wrapper collects all the results.
-        shift_values = np.linspace(0, (hdr_image.shape[1]), 60).astype(int)
-        frames = pool.starmap(generate_frame, [(hdr_image, i) for i in shift_values])
+        shift_values = np.linspace(0, 360, 60).astype(int)
+        frames = pool.starmap(generate_frame, [(hdr_image, i, args.axis) for i in shift_values])
     frames = (np.stack(frames).clip(0, 1) * 255).astype(int)
     torchvision.io.write_video(f"out_{pf}.mp4", frames, fps=24)

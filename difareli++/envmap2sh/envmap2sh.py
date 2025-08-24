@@ -21,7 +21,6 @@ def process_file(image_name):
     return None
 
 
-
 def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     files = sorted(os.listdir(INPUT_DIR))
