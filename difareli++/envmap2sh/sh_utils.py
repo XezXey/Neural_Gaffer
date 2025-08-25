@@ -50,6 +50,7 @@ def unfold_sh_coeff(flatted_coeff, max_sh_level=2):
     for c in range(3):  # Iterate each channel
         coeff = 0   # Each coeff
         for j in range(max_sh_level+1): # Iterate each level    [0 to max_sh_level]
+            # if j == 1: continue
             for k in range(j, 0, -1):   # From [-(max_sh_level) to -1]; inclusive
                 sh_coeff[c, 1, j, k] = flatted_coeff[c, coeff]
                 coeff +=1
@@ -69,6 +70,7 @@ def flatten_sh_coeff(sh_coeff, max_sh_level=2):
     for i in range(3):
         c = 0
         for j in range(max_sh_level+1):
+            # if j == 1: continue
             for k in range(j, 0, -1):
                 flatted_coeff[i, c] = sh_coeff[i, 1, j, k]
                 c +=1
@@ -111,6 +113,7 @@ def sample_from_sh(shcoeff, lmax, theta, phi):
     for ch in (range(3)):
         coeffs = pyshtools.SHCoeffs.from_array(shcoeff[ch], lmax=lmax, normalization='4pi', csphase=1)
         image = coeffs.expand(grid="GLQ", lat=theta, lon=phi, lmax_calc=lmax, degrees=False)
+        # image = coeffs.expand(grid="DH2", lat=theta, lon=phi, lmax_calc=lmax, degrees=False)
         output.append(image[...,None])
     output = np.concatenate(output, axis=-1)
     return output
@@ -197,6 +200,7 @@ def cartesian_to_spherical(vectors):
 
     # Calculate theta (latitude angle)
     theta = np.arcsin(z)  # arcsin gives range [-pi/2, pi/2]
+    # theta = np.arccos(z) - np.pi/2  # arcsin gives range [-pi/2, pi/2]
 
     # Calculate phi (longitude angle)
     phi = np.arctan2(y, x)  # atan2 accounts for correct quadrant
@@ -340,16 +344,43 @@ def get_rotation_matrix_from_vectors_single(a, b):
     R = np.eye(3) + vx + np.dot(vx, vx) * (1 - c) / (s ** 2)
     return R    
 
-def apply_integrate_conv(shcoeff):
+def apply_integrate_conv(shcoeff, Lmax):
     # apply integrate on diffuse surface 
     # @see https://cseweb.ucsd.edu/~ravir/papers/envmap/envmap.pdf
     assert shcoeff.shape[0] == 3 and shcoeff.shape[1] == 2
+    
     A = np.array([
         np.pi, # 0
         2*np.pi / 3, # 1
         np.pi / 4, # 2
     ])
     for j in range(3):  # Iterate each 
+        # check if it still access
+        if j < shcoeff.shape[2]:
+            shcoeff[:,:,j] = A[j] * shcoeff[:,:,j]
+    return shcoeff
+
+def apply_integrate_conv_anyLmax(shcoeff, Lmax):
+    # apply integrate on diffuse surface 
+    # @see https://cseweb.ucsd.edu/~ravir/papers/envmap/envmap.pdf
+    '''
+    shcoeff: unfolded_sh_coeff in shape [3, 2, Lmax + 1, Lmax + 1]
+    '''
+    assert shcoeff.shape[0] == 3 and shcoeff.shape[1] == 2
+    import scipy
+    A = []
+    for l in range(Lmax + 1):
+        if l == 1:
+            out = 2 * np.pi / 3
+        elif l > 1 and l % 2 == 1:
+            out = 0
+        elif l % 2 == 0:
+            fact = scipy.special.factorial(l) / ((2 ** l) * (scipy.special.factorial(l / 2) ** 2))
+            out = 2 * np.pi * ((((-1) ** ((l / 2) - 1))) / ((l + 2) * (l - 1))) * fact
+        A.append(out)
+        
+    A = np.array(A)
+    for j in range(Lmax + 1):  # Iterate each 
         # check if it still access
         if j < shcoeff.shape[2]:
             shcoeff[:,:,j] = A[j] * shcoeff[:,:,j]
@@ -384,7 +415,8 @@ def genSurfaceNormals(n):
     y = torch.linspace(1, -1, n)
     y, x = torch.meshgrid(y, x)
 
-    z = (1 - x ** 2 - y ** 2)
-    z[z < 0] = 0
+    z = (1 - x ** 2 - y ** 2)   # x^2 + y^2 + z^2 = 1
+    z[z < 0] = 0    # Outside hemisphere = 0, including outside circle
+    alpha = z != 0 
     z = torch.sqrt(z)
-    return torch.stack([x, y, z], 0)
+    return torch.stack([x, y, z], 0), alpha
