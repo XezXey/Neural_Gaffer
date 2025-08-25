@@ -3,6 +3,7 @@ from sh_utils import get_shcoeff, unfold_sh_coeff, flatten_sh_coeff, apply_integ
 from tonemapper import TonemapHDR
 import matplotlib.pyplot as plt
 import skimage
+from PIL import Image
 import torchvision
 import tqdm
 from envmap import EnvironmentMap, rotation_matrix
@@ -22,7 +23,7 @@ map_name = "117_hdrmaps_com_free_2K.exr"
 # map_name = "128_hdrmaps_com_free_2K.exr"
 # map_name = "125_hdrmaps_com_free_2K.exr"
 
-def render(hdr_image, normal_map):
+def render(hdr_image, face):
     hdr_tm, _, _ = tonemapper(hdr_image)
 
     coeff = get_shcoeff(hdr_image, Lmax=2)
@@ -32,36 +33,50 @@ def render(hdr_image, normal_map):
 
     apply_integrated = apply_integrate_conv(unfolded.copy())
 
-    if normal_map is None:
+    if face is None:
         normal_map = genSurfaceNormals(256).permute(1, 2, 0).cpu().numpy()  # H, W, C
         T = th.tensor([[0.,0.,1.],
                         [1.,0.,0.],
                         [0.,1.,0.]])                       # maps [x,y,z] -> [z,x,y]
         normal_map = th.einsum('ij,hwj->hwi', T, th.tensor(normal_map).float())
         normal_map = normal_map.cpu().numpy()
+        mask = 1.0
     else:
-        normal_map = normal_map
+        normal_map = face['normal_map']
+        mask = face['alpha_map']
         T = th.tensor([[0.,0.,1.],
                         [1.,0.,0.],
                         [0.,1.,0.]])                       # maps [x,y,z] -> [z,x,y]
         normal_map = th.einsum('ij,hwj->hwi', T, th.tensor(normal_map).float())
         normal_map = normal_map.cpu().numpy()
     
-    # mask = (normal_map[..., 0:1] != 0)
-    mask = 1.0
 
     theta, phi = cartesian_to_spherical(normal_map)
     shading = sample_from_sh(apply_integrated, lmax=ORDER, theta=theta, phi=phi)
+    if face is not None:
+        shading = shading * face['albedo']
 
     shading = np.float32(shading)
     shading, _, _ = tonemapper(shading) # tonemap
+    # print("TM", np.max(shading), np.min(shading))
     shading = np.clip(shading, 0, 1)
-    shading = skimage.img_as_ubyte(shading) / 255.
+    # print("CLIP:", np.max(shading), np.min(shading))
+    shading = skimage.img_as_ubyte(shading)
+    # print("SK:", np.max(shading), np.min(shading))
+    # shading = skimage.img_as_ubyte(shading) / 255.
 
+    # print(shading.dtype)
+    # Shading with grey-scale
+    shading_grey = np.array(Image.fromarray(shading.copy()).convert('L'))[..., None]
+    shading_grey = np.repeat(shading_grey, 3, axis=2)
+    # print(shading_grey.dtype, shading_grey.shape)
     
-    return ((normal_map + 1) * 0.5) * mask, shading * mask
+    shading = shading / 255.
+    shading_grey = shading_grey / 255.
+    
+    return ((normal_map + 1) * 0.5) * mask, shading * mask, shading_grey * mask
 
-def generate_frame(hdr_image, i, axis, normal_map):
+def generate_frame(hdr_image, i, axis, face):
     # hdr_image_roll = np.roll(hdr_image.copy(), shift=-i, axis=1)
     # print(axis)
     rot_deg = i*np.pi/180
@@ -71,10 +86,13 @@ def generate_frame(hdr_image, i, axis, normal_map):
     e = EnvironmentMap(hdr_image, 'latlong')
     e_rot = e.copy().rotate(dcm)
     hdr_image_rot = e_rot.data    # np.array of shape [H, W, 3], min: 0, max: 1
-    normal_map, shading = render(hdr_image_rot, normal_map)
-    print(np.max(normal_map), np.min(normal_map))
-    print(np.max(shading), np.min(shading))
-    tgt_w = normal_map.shape[1] + shading.shape[1]
+    normal_map, shading, shading_grey = render(hdr_image_rot, face)
+    # print(np.max(normal_map), np.min(normal_map))
+    # print(np.max(shading), np.min(shading))
+    # print(np.max(shading_grey), np.min(shading_grey))
+    # print(normal_map.shape, shading.shape, shading_grey.shape)
+    
+    tgt_w = normal_map.shape[1] + shading.shape[1] + shading_grey.shape[1]
     
     # resize hdr_image_roll but still preserve aspect ratio
     hdr_image_rot = skimage.transform.resize(hdr_image_rot, (normal_map.shape[0], tgt_w), anti_aliasing=True)
@@ -86,7 +104,7 @@ def generate_frame(hdr_image, i, axis, normal_map):
 
 
     frame = np.concatenate((hdr_image_original, hdr_image_rot, 
-                        np.concatenate((normal_map, shading), axis=1)), axis=0)
+                        np.concatenate((normal_map, shading, shading_grey), axis=1)), axis=0)
     
     # print(np.max(hdr_image_roll), np.min(hdr_image_roll))
     # print(np.max(normal_map), np.min(normal_map))
@@ -129,19 +147,35 @@ if __name__ == '__main__':
         pf = f'pl_{desired_pos}'
     else:
         print("[#] Using full HDR environment map.")
-        pf = 'hdr'
+        pf = f'hdr_{map_name}'
         
     if args.normal_map is None:
         print("[#] Use generated normal map.")
         nm = 'gen'
-        normal_map = None
+        face = None
     else: 
         normal_map = np.load(args.normal_map)
+        alpha_map = np.load(args.normal_map.replace('normal', 'alpha'))
+        abledo = np.load(args.normal_map.replace('normal', 'albedo'))
+        print(alpha_map.shape)
         # Assume shape is T x 3 x H x W
         assert normal_map.shape[1] == 3
+        assert abledo.shape[1] == 3
+        assert alpha_map.shape[1] == 1
         normal_map = normal_map.transpose(0, 2, 3, 1)
+        alpha_map = alpha_map.transpose(0, 2, 3, 1)
+        albedo = abledo.transpose(0, 2, 3, 1)
+        
         assert np.all([np.allclose(x, normal_map[0], rtol=1e-03) for x in normal_map])
+        assert np.all([np.allclose(x, alpha_map[0], rtol=1e-03) for x in alpha_map])
+        assert np.all([np.allclose(x, albedo[0], rtol=1e-03) for x in albedo])
+        
         normal_map = normal_map[0]
+        alpha_map = alpha_map[0]
+        albedo = albedo[0]
+
+        face = {'normal_map': normal_map, 'alpha_map': alpha_map, 'albedo': albedo}
+
         nm = 'deca'
         print(f"[#] Loaded normal map from {args.normal_map}, shape: {normal_map.shape}")
 
@@ -151,6 +185,6 @@ if __name__ == '__main__':
         # It's used here instead of 'pool.map' because it works better with tqdm's progress bar.
         # The list() wrapper collects all the results.
         shift_values = np.linspace(0, 360, 60).astype(int)
-        frames = pool.starmap(generate_frame, [(hdr_image, i, args.axis, normal_map) for i in shift_values])
+        frames = pool.starmap(generate_frame, [(hdr_image, i, args.axis, face) for i in shift_values])
     frames = (np.stack(frames).clip(0, 1) * 255).astype(int)
     torchvision.io.write_video(f"out_{pf}_{args.axis}_{nm}.mp4", frames, fps=24)

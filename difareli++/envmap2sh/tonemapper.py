@@ -16,7 +16,8 @@ class TonemapHDR(object):
     def __call__(self, numpy_img, clip=True, alpha=None, gamma=True):
         if gamma:
             # power_numpy_img = np.power(np.abs(numpy_img), 1 / self.gamma)
-            power_numpy_img = np.power(numpy_img, 1 / self.gamma)
+            power_numpy_img = np.sign(numpy_img) * np.power(np.abs(numpy_img), 1 / self.gamma)
+            # power_numpy_img = np.power(numpy_img, 1 / self.gamma)
         else:
             power_numpy_img = numpy_img
         non_zero = power_numpy_img > 0
