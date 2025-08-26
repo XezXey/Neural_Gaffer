@@ -65,15 +65,10 @@ def render(hdr_image, face, Lmax):
         shading = shading * face['albedo']
 
     shading = np.float32(shading)
-    shading, _, _ = tonemapper(shading) # tonemap
-    # print("TM", np.max(shading), np.min(shading))
-    shading = np.clip(shading, 0, 1)
-    # print("CLIP:", np.max(shading), np.min(shading))
+    # shading, _, _ = tonemapper(shading) # tonemap
+    # shading = np.clip(shading, 0, 1)
     shading = skimage.img_as_ubyte(shading)
-    # print("SK:", np.max(shading), np.min(shading))
-    # shading = skimage.img_as_ubyte(shading) / 255.
-
-    # print(shading.dtype)
+    
     # Shading with grey-scale
     shading_grey = np.array(Image.fromarray(shading.copy()).convert('L'))[..., None]
     shading_grey = np.repeat(shading_grey, 3, axis=2)

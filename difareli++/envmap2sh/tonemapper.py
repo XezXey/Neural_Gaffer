@@ -16,12 +16,14 @@ class TonemapHDR(object):
     def __call__(self, numpy_img, clip=True, alpha=None, gamma=True):
         if gamma:
             # power_numpy_img = np.power(np.abs(numpy_img), 1 / self.gamma)
+            # print("b4: ", np.max(numpy_img), np.min(numpy_img))
             power_numpy_img = np.sign(numpy_img) * np.power(np.abs(numpy_img), 1 / self.gamma)
+            # print("af: ", np.max(power_numpy_img), np.min(power_numpy_img))
             # power_numpy_img = np.power(numpy_img, 1 / self.gamma)
         else:
             power_numpy_img = numpy_img
         non_zero = power_numpy_img > 0
-        if non_zero.any():
+        if non_zero.any():  # Ignore 0 pixels when calculating percentile
             r_percentile = np.percentile(power_numpy_img[non_zero], self.percentile)
         else:
             r_percentile = np.percentile(power_numpy_img, self.percentile)
