@@ -11,6 +11,7 @@ from tqdm import tqdm
 import traceback
 import torchvision
 from torchvision import transforms
+from envmap import EnvironmentMap, rotation_matrix
 
 from kornia import create_meshgrid
 
@@ -96,32 +97,14 @@ def process_im(im):
     return image_transforms(im)
 
 
-
-def rotate_and_preprcess_envir_map(envir_map, aligned_RT, rotation_idx=0, total_view=120):
-    # envir_map: [H, W, 3]
-    # aligned_RT: numpy.narray [3, 4] w2c
-    # the coordinate system follows Blender's convention
-    
-    # c_x_axis, c_y_axis, c_z_axis = aligned_RT[0, :3], aligned_RT[1, :3], aligned_RT[2, :3]
-    env_h, env_w = envir_map.shape[0], envir_map.shape[1]
- 
-    light_area_weight, view_dirs = generate_envir_map_dir(env_h, env_w)
-    
-    axis_aligned_transform = np.array([[1, 0, 0], [0, 0, -1], [0, 1, 0]]) # Blender's convention
-    axis_aligned_R = axis_aligned_transform @ aligned_RT[:3, :3] # [3, 3]
-    view_dirs_world = view_dirs @ axis_aligned_R # [envH * envW, 3]
-    
-    # rotate the envir map along the z-axis
-    rotated_z_radius = (-2 * np.pi * rotation_idx / total_view) 
-    # [3, 3], left multiplied by the view_dirs_world
-    rotation_maxtrix = np.array([[np.cos(rotated_z_radius), -np.sin(rotated_z_radius), 0],
-                                [np.sin(rotated_z_radius), np.cos(rotated_z_radius), 0],
-                                [0, 0, 1]])
-    view_dirs_world = view_dirs_world @ rotation_maxtrix        
-    
-    rotated_hdr_rgb = get_light(envir_map, view_dirs_world)
-    rotated_hdr_rgb = rotated_hdr_rgb.reshape(env_h, env_w, 3)
-    
+def rotate_and_preprocess_envir_map(envir_map, i, axis):
+    rot_deg = i*np.pi/180
+    dcm = rotation_matrix(azimuth=rot_deg if axis == 'azimuth' else 0,
+                        elevation=rot_deg if axis == 'elevation' else 0,
+                        roll=rot_deg if axis == 'roll' else 0)
+    e = EnvironmentMap(envir_map.cpu().numpy(), 'latlong')
+    e_rot = e.copy().rotate(dcm)
+    rotated_hdr_rgb = e_rot.data    # np.array of shape [H, W, 3], min: 0, max: 1
     rotated_hdr_rgb = np.array(rotated_hdr_rgb, dtype=np.float32)
 
     # ldr
@@ -137,7 +120,7 @@ def rotate_and_preprcess_envir_map(envir_map, aligned_RT, rotation_idx=0, total_
     envir_map_hdr = Image.fromarray(envir_map_hdr)
 
     return envir_map_ldr, envir_map_hdr
-
+    
 def get_rays(directions, c2w):
     """
     Get ray origin and normalized directions in world coordinate for all pixels in one image.
@@ -274,8 +257,8 @@ if __name__ == '__main__':
     parser.add_argument("--output_dir", type=str, default="./preprocessed_lighting_data", help="path to the folder containing environment maps")
     parser.add_argument("--lighting_dir", type=str, default="./demo/environment_map_sample")
                        
-    parser.add_argument("--frame_num", type=int, default=120, help="number of environment map rotation")
-    parser.add_argument("--init_RT_path", type=str, default="./demo/default_pose.npy", help="path to the folder containing environment maps")
+    parser.add_argument("--frame_num", type=int, default=60, help="number of environment map rotation")
+    parser.add_argument("--rotate_axis", default='azimuth')
     parser.add_argument("--light_num", type=int, default=-1)
     args = parser.parse_args()
     cur_envir_map_paths = glob(os.path.join(args.lighting_dir, '*.exr'))
@@ -303,13 +286,15 @@ if __name__ == '__main__':
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
 
-    for light_idx in range(to_process_light_num):
+    t = tqdm(range(to_process_light_num), "[#] Processing light...", leave=True)
+    for light_idx in t:
         envir_map_path = selected_envir_map_paths[light_idx]
         envir_map_name = os.path.basename(envir_map_path)[:-4]
+        
+        t.set_description(f"Processing light: {envir_map_name}.")
         hdr_rgb = read_hdr(envir_map_path)  # Read raw value in RGB order [0, some_large_value]
         envir_map_hdr_values[envir_map_name] = hdr_rgb
 
-        init_RT = np.load(args.init_RT_path)
 
         cur_save_dir = os.path.join(args.output_dir, envir_map_name)
         if not os.path.exists(cur_save_dir):
@@ -317,38 +302,43 @@ if __name__ == '__main__':
             os.makedirs(os.path.join(cur_save_dir, 'background'))
             os.makedirs(os.path.join(cur_save_dir, 'LDR'))
             os.makedirs(os.path.join(cur_save_dir, 'HDR_normalized'))
-        ray_direction = get_ray_d(init_RT)
         cur_results = []
-        for frame_idx in tqdm(range(args.frame_num)):
-            
+        hdr = []
+        ldr = []
+        shift_values = np.linspace(0, 360, args.frame_num).astype(int)
+        for frame_idx in tqdm(range(args.frame_num), "[#] Processing frame...", leave=False):
 
-            # rotate the envir map along the z-axis
-            rotated_z_radius = (-2 * np.pi * frame_idx / args.frame_num) 
-            # [3, 3], left multiplied by the view_dirs_world
-            rotation_maxtrix = np.array([[np.cos(rotated_z_radius), -np.sin(rotated_z_radius), 0],
-                                        [np.sin(rotated_z_radius), np.cos(rotated_z_radius), 0],
-                                        [0, 0, 1]], dtype=np.float32)
-            view_dirs_world = ray_direction @ rotation_maxtrix  
-            envir_map_results = get_envir_map_light(hdr_rgb, view_dirs_world).clamp(0, 1)
-            # envir_map_results = linear2srgb_torch(envir_map_results)
-            envir_map_results = envir_map_results ** (1/2.2)
-            # envir_map_results = np.array(envir_map_results, dtype=np.float32) ** (1/2.2)
-            envir_map_results = envir_map_results.reshape(256, 256, 3)
-            envir_map_results = np.uint8(envir_map_results * 255)
-            cur_results.append(envir_map_results.copy())
-            # torch to Image
-            envir_map_results = Image.fromarray(envir_map_results)
+            # # rotate the envir map along the z-axis
+            # rotated_z_radius = (-2 * np.pi * frame_idx / args.frame_num) 
+            # # [3, 3], left multiplied by the view_dirs_world
+            # rotation_maxtrix = np.array([[np.cos(rotated_z_radius), -np.sin(rotated_z_radius), 0],
+            #                             [np.sin(rotated_z_radius), np.cos(rotated_z_radius), 0],
+            #                             [0, 0, 1]], dtype=np.float32)
+            # view_dirs_world = ray_direction @ rotation_maxtrix  
+            # envir_map_results = get_envir_map_light(hdr_rgb, view_dirs_world).clamp(0, 1)
+            # # envir_map_results = linear2srgb_torch(envir_map_results)
+            # envir_map_results = envir_map_results ** (1/2.2)
+            # # envir_map_results = np.array(envir_map_results, dtype=np.float32) ** (1/2.2)
+            # envir_map_results = envir_map_results.reshape(256, 256, 3)
+            # envir_map_results = np.uint8(envir_map_results * 255)
+            # cur_results.append(envir_map_results.copy())
+            # # torch to Image
+            # envir_map_results = Image.fromarray(envir_map_results)
 
-            envir_map_results.save(os.path.join(cur_save_dir, 'background', f'{frame_idx}.png'))
+            # envir_map_results.save(os.path.join(cur_save_dir, 'background', f'{frame_idx}.png'))
 
-
-            envir_map_ldr, envir_map_hdr = rotate_and_preprcess_envir_map(envir_map_hdr_values[envir_map_name], init_RT, rotation_idx=frame_idx, total_view=args.frame_num)
+            envir_map_ldr, envir_map_hdr = rotate_and_preprocess_envir_map(envir_map_hdr_values[envir_map_name], i=shift_values[frame_idx], axis=args.rotate_axis)
 
             target_envir_map_ldr = envir_map_ldr.resize((256, 256), Image.BILINEAR)
             target_envir_map_hdr = envir_map_hdr.resize((256, 256), Image.BILINEAR)
             target_envir_map_ldr.save(os.path.join(cur_save_dir, 'LDR', f'{frame_idx}.png'))
             target_envir_map_hdr.save(os.path.join(cur_save_dir, 'HDR_normalized', f'{frame_idx}.png'))
+            
+            hdr.append(np.array(target_envir_map_hdr))
+            ldr.append(np.array(target_envir_map_ldr))
 
         # save as video
-        import imageio; imageio.mimsave(os.path.join(cur_save_dir, 'background', f'{envir_map_name}.mp4'), cur_results, fps=30)
-
+        # torchvision.io.write_video(os.path.join(cur_save_dir, 'background', f'{envir_map_name}.mp4'), np.stack(cur_results), fps=24)
+        torchvision.io.write_video(os.path.join(cur_save_dir, 'LDR', f'{envir_map_name}_ldr.mp4'), np.stack(ldr), fps=24)
+        torchvision.io.write_video(os.path.join(cur_save_dir, 'HDR_normalized', f'{envir_map_name}_hdr.mp4'), np.stack(hdr), fps=24)
+        # import imageio; imageio.mimsave(os.path.join(cur_save_dir, 'background', f'{envir_map_name}.mp4'), cur_results, fps=30)
