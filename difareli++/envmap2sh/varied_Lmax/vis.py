@@ -30,24 +30,40 @@ def create_app():
             th, td { display: block; }
         </style>
         """
-        # out += "<table>"
+        out += "<table>"
             
         # for img in sorted(glob.glob(f'./*.mp4')):
         lvl = [2, 5, 10, 20, 50, 100, 150]
-        vid_list = [f'./out_pl_left-middle_azimuth_gen_Lmax{Lmax}.mp4' for Lmax in lvl]
+        vid_list = [f'./fix_out_pl_left-middle_azimuth_gen_Lmax{Lmax}.mp4' for Lmax in lvl]
         for i, img in enumerate(vid_list):
-            # out += "<tr>"
-            # out += "<td>"
+            out += "<tr>"
+            out += "<td>"
             out += f"<p style=\"font-size:25;\"> L = {lvl[i]} </p>"
+            out += f"<p style=\"font-size:25;\"> Before / Fixed </p>"
+            out += (
+                f'<video width="768" autoplay muted loop controls preload="metadata" playsinline>'
+                f'  <source src="/files/{img.replace("fix_", "")}" type="video/mp4">'
+                f'  Your browser does not support the video tag.'
+                f'</video> '
+            )
+            # out += "</td>"
+            # out += "<td>"
             out += (
                 f'<video width="768" autoplay muted loop controls preload="metadata" playsinline>'
                 f'  <source src="/files/{img}" type="video/mp4">'
                 f'  Your browser does not support the video tag.'
+                f'</video> '
+            )
+            # out += "</td>"
+            # out += "<td>"
+            out += (
+                f'<video width="768" autoplay muted loop controls preload="metadata" playsinline>'
+                f'  <source src="/files/{img.replace("pl", "apl")}" type="video/mp4">'
+                f'  Your browser does not support the video tag.'
                 f'</video>'
             )
-
-            # out += "<td>"
-            # out += "</tr>"
+            out += "</td>"
+            out += "</tr>"
         # out += "</table>"
         return out
     return app

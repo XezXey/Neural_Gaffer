@@ -12,3 +12,6 @@ wandb/
 preprocessed_lighting_data/
 .gitignore
 real_data_relighting/
+difareli++/
+preprocessed_data/
+mylight/
