@@ -129,6 +129,11 @@ def run_dir(args):
         input_256.save(os.path.join(args.out_dir, "img", clear_name+".png"))
         mask_256.save(os.path.join(args.out_dir, "mask", clear_name+".png"))
 
+        os.makedirs(os.path.join(args.out_dir, "sj_sep", clear_name, "img"), exist_ok=True)
+        os.makedirs(os.path.join(args.out_dir, "sj_sep", clear_name, "mask"), exist_ok=True)
+        input_256.save(os.path.join(args.out_dir, "sj_sep", clear_name, "img", clear_name+".png"))
+        mask_256.save(os.path.join(args.out_dir, "sj_sep", clear_name, "mask", clear_name+".png"))
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('--img_dir', type=str, default="./init", help='Path to the input directory')
