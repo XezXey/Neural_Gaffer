@@ -14,6 +14,7 @@ parser.add_argument('--gpu_id', default=0, type=int)
 parser.add_argument('--sample_pair_json', nargs='+', type=str)
 parser.add_argument('--idx', nargs='+', default=[-1], type=int, help='Index of the subject to process. Use -1 to process all subjects.')
 parser.add_argument('--main_process_port', default='25539', type=str)
+parser.add_argument('--save_dir', required=True, type=str)
 args = parser.parse_args()
 
 logger = mint_logging.createLogger()
@@ -72,7 +73,7 @@ if __name__ == '__main__':
                         --lighting_per_view {args.lighting_per_view} \
                         --val_img_dir {img_path} \
                         --val_lighting_dir {lighting} \
-                        --save_dir ./difareli++/results/azimuth/
+                        --save_dir {args.save_dir}
                 """
                 logger.error(f"="*111)
                 logger.warning(f"[#] Running on json: {json_file} with {to_run_idx}")
