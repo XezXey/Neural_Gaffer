@@ -23,3 +23,5 @@ mylight_rotate/
 difareli++/envmap2sh/varied_Lmax/
 difareli++/results_tmp/
 difareli++/tmp/
+neural_gaffer_res256/checkpoint-80000/
+sam_vit_h_4b8939.pth
