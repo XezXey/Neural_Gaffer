@@ -297,14 +297,18 @@ if __name__ == '__main__':
 
 
         cur_save_dir = os.path.join(args.output_dir, envir_map_name)
-        if not os.path.exists(cur_save_dir):
-            os.makedirs(cur_save_dir)
-            os.makedirs(os.path.join(cur_save_dir, 'background'))
-            os.makedirs(os.path.join(cur_save_dir, 'LDR'))
-            os.makedirs(os.path.join(cur_save_dir, 'HDR_normalized'))
+        # if not os.path.exists(cur_save_dir):
+        os.makedirs(cur_save_dir, exist_ok=True)
+        os.makedirs(os.path.join(cur_save_dir, 'background'), exist_ok=True)
+        os.makedirs(os.path.join(cur_save_dir, 'LDR'), exist_ok=True)
+        os.makedirs(os.path.join(cur_save_dir, 'HDR_normalized'), exist_ok=True)
+        os.makedirs(os.path.join(cur_save_dir, 'HDR_normalized_original_size'), exist_ok=True)
+        os.makedirs(os.path.join(cur_save_dir, 'LDR_original_size'), exist_ok=True)
         cur_results = []
         hdr = []
         ldr = []
+        hdr_original = []
+        ldr_original = []
         shift_values = np.linspace(0, 360, args.frame_num).astype(int)
         for frame_idx in tqdm(range(args.frame_num), "[#] Processing frame...", leave=False):
 
@@ -333,12 +337,18 @@ if __name__ == '__main__':
             target_envir_map_hdr = envir_map_hdr.resize((256, 256), Image.BILINEAR)
             target_envir_map_ldr.save(os.path.join(cur_save_dir, 'LDR', f'{frame_idx}.png'))
             target_envir_map_hdr.save(os.path.join(cur_save_dir, 'HDR_normalized', f'{frame_idx}.png'))
+            envir_map_hdr.save(os.path.join(cur_save_dir, 'HDR_normalized_original_size', f'{frame_idx}.png'))
+            envir_map_ldr.save(os.path.join(cur_save_dir, 'LDR_original_size', f'{frame_idx}.png'))
             
             hdr.append(np.array(target_envir_map_hdr))
             ldr.append(np.array(target_envir_map_ldr))
+            hdr_original.append(np.array(envir_map_hdr))
+            ldr_original.append(np.array(envir_map_ldr))
 
         # save as video
         # torchvision.io.write_video(os.path.join(cur_save_dir, 'background', f'{envir_map_name}.mp4'), np.stack(cur_results), fps=24)
         torchvision.io.write_video(os.path.join(cur_save_dir, 'LDR', f'{envir_map_name}_ldr.mp4'), np.stack(ldr), fps=24)
         torchvision.io.write_video(os.path.join(cur_save_dir, 'HDR_normalized', f'{envir_map_name}_hdr.mp4'), np.stack(hdr), fps=24)
+        torchvision.io.write_video(os.path.join(cur_save_dir, 'HDR_normalized_original_size', f'{envir_map_name}_hdr_original_size.mp4'), np.stack(hdr_original), fps=24)
+        torchvision.io.write_video(os.path.join(cur_save_dir, 'LDR_original_size', f'{envir_map_name}_ldr_original_size.mp4'), np.stack(ldr_original), fps=24)
         # import imageio; imageio.mimsave(os.path.join(cur_save_dir, 'background', f'{envir_map_name}.mp4'), cur_results, fps=30)
